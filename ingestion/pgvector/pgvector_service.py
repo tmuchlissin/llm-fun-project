@@ -1,4 +1,4 @@
-from langchain.embeddings.openai import OpenAIEmbeddings
+from langchain_ollama import OllamaEmbeddings
 from langchain_community.vectorstores.pgvector import (
     PGVector,
     _get_embedding_collection_store,
@@ -16,7 +16,7 @@ EmbeddingStore = _get_embedding_collection_store()[0]
 class PgvectorService:
     def __init__(self, connection_string):
         load_dotenv()
-        self.embeddings = OpenAIEmbeddings()
+        self.embeddings = OllamaEmbeddings(model="bge-m3:latest")
         self.cnx = connection_string
         self.collections = []
         self.engine = create_engine(self.cnx)
@@ -59,7 +59,7 @@ class PgvectorService:
         logging.info(f"Creating new collection: {collection_name}")
         with self.engine.connect() as connection:
             pgvector = PGVector.from_documents(
-                embedding=self.embeddings,
+                embeddings=self.embeddings,
                 documents=docs,
                 collection_name=collection_name,
                 connection_string=self.cnx,
@@ -87,14 +87,37 @@ class PgvectorService:
             overwrite = collection_name in collections
             self.update_pgvector_collection(docs, collection_name, overwrite)
 
-    def delete_collection(self, collection_name):
-        """Deletes a collection based on the collection name."""
+    def delete_collection(self, collection_name: str):
+        """
+        Deletes a collection completely from both tables:
+        - langchain_pg_embedding
+        - langchain_pg_collection
+        """
         logging.info(f"Deleting collection: {collection_name}")
-        with self.engine.connect() as connection:
-            pgvector = PGVector(
-                collection_name=collection_name,
-                connection_string=self.cnx,
-                connection=connection,
-                embedding_function=self.embeddings,
-            )
-            pgvector.delete_collection()
+        with self.engine.begin() as connection:
+            # 1️⃣ Ambil UUID koleksi dari tabel langchain_pg_collection
+            query = text("""
+                SELECT uuid FROM public.langchain_pg_collection WHERE name = :name
+            """)
+            result = connection.execute(query, {"name": collection_name}).fetchone()
+
+            if not result:
+                logging.warning(f"⚠️ Collection '{collection_name}' not found.")
+                return
+
+            collection_id = result[0]
+
+        # 2️⃣ Hapus semua embedding yang terkait
+        delete_embeddings = text("""
+            DELETE FROM public.langchain_pg_embedding WHERE collection_id = :cid
+        """)
+        connection.execute(delete_embeddings, {"cid": collection_id})
+
+        # 3️⃣ Hapus record koleksi dari langchain_pg_collection
+        delete_collection = text("""
+            DELETE FROM public.langchain_pg_collection WHERE uuid = :cid
+        """)
+        connection.execute(delete_collection, {"cid": collection_id})
+
+        logging.info(f"✅ Collection '{collection_name}' deleted successfully.")
+

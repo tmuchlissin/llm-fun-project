@@ -1,32 +1,34 @@
+# %%
 from dotenv import load_dotenv
-from langchain.document_loaders import TextLoader
-from langchain.embeddings.openai import OpenAIEmbeddings
-from langchain.text_splitter import CharacterTextSplitter
-from langchain.document_loaders import TextLoader
-from langchain.vectorstores.pgvector import PGVector
+from langchain_community.document_loaders import TextLoader
+from langchain_ollama import OllamaEmbeddings
+from langchain_text_splitters import CharacterTextSplitter
+from langchain_postgres.vectorstores import PGVector
 from pgvector_service import PgvectorService
 import os
 import time
-
+from pyprojroot import here
+from pathlib import Path
+from sqlalchemy import create_engine
 load_dotenv()
-
-
+# %%
+ 
 # --------------------------------------------------------------
 # Load the documents
 # --------------------------------------------------------------
 
-loader = TextLoader(
-    "../data/The Project Gutenberg eBook of A Christmas Carol in Prose; Being a Ghost Story of Christmas.txt"
-)
+file_path = here("data/txt/The Project Gutenberg eBook of A Christmas Carol in Prose; Being a Ghost Story of Christmas.txt")
+loader = TextLoader(str(file_path))
+
 documents = loader.load()
 text_splitter = CharacterTextSplitter(chunk_size=2000, chunk_overlap=0)
 docs = text_splitter.split_documents(documents)
 
-embeddings = OpenAIEmbeddings()
+embeddings = OllamaEmbeddings(model="bge-m3:latest")
 
 query = "The Project Gutenberg eBook of A Christmas Carol in Prose; Being a Ghost Story of Christmas"
 
-
+# %%
 # --------------------------------------------------------------
 # Create a PGVector Store
 # --------------------------------------------------------------
@@ -45,30 +47,33 @@ https://github.com/pgvector/pgvector?tab=readme-ov-file#installation-notes
 COLLECTION_NAME = "The Project Gutenberg eBook of A Christmas Carol in Prose"
 
 CONNECTION_STRING = PGVector.connection_string_from_db_params(
-    driver=os.environ.get("PGVECTOR_DRIVER", "psycopg2"),
+    driver=os.environ.get("PGVECTOR_DRIVER", "psycopg"),
     host=os.environ.get("PGVECTOR_HOST", "localhost"),
-    port=int(os.environ.get("PGVECTOR_PORT", "5432")),
-    database=os.environ.get("PGVECTOR_DATABASE", "pgvector"),
-    user=os.environ.get("PGVECTOR_USER", "postgres"),
-    password=os.environ.get("PGVECTOR_PASSWORD", "postres"),
+    port=int(os.environ.get("PGVECTOR_PORT", "5432")),  # gunakan port aktifmu
+    database=os.environ.get("PGVECTOR_DATABASE", "vector"),
+    user=os.environ.get("PGVECTOR_USER", "qul"),
+    password=os.environ.get("PGVECTOR_PASSWORD", "{BangMuchlis123!}"),
 )
 
-# create the store
+engine = create_engine(CONNECTION_STRING)
+
+# create store
 db = PGVector.from_documents(
     embedding=embeddings,
     documents=docs,
     collection_name=COLLECTION_NAME,
-    connection_string=CONNECTION_STRING,
+    connection=engine,
     pre_delete_collection=False,
 )
 
-# load the store
+# load store
 pgvector_docsearch = PGVector(
     collection_name=COLLECTION_NAME,
-    connection_string=CONNECTION_STRING,
+    connection=engine,
     embedding_function=embeddings,
 )
 
+# %%
 # --------------------------------------------------------------
 # Query the index with PGVector
 # --------------------------------------------------------------
@@ -98,7 +103,7 @@ calculate_average_execution_time(
     run_query_pgvector, docsearch=pgvector_docsearch, query=query
 )
 
-
+# %%
 # --------------------------------------------------------------
 # Add more collections to the database
 # --------------------------------------------------------------
@@ -118,7 +123,7 @@ db = PGVector.from_documents(
     pre_delete_collection=False,
 )
 
-
+# %%
 # --------------------------------------------------------------
 # Query the index with multiple collections
 # --------------------------------------------------------------
@@ -134,13 +139,16 @@ def run_query_multi_pgvector(docsearch, query):
 
 run_query_multi_pgvector(pg, query)
 
+# %%
 # --------------------------------------------------------------
 # Delete the collection
 # --------------------------------------------------------------
 pg.delete_collection(COLLECTION_NAME)
 pg.delete_collection(COLLECTION_NAME_2)
 
+# %%
 # --------------------------------------------------------------
 # Update the collection
 # --------------------------------------------------------------
 pg.update_collection(docs=docs, collection_name=COLLECTION_NAME)
+# %%
