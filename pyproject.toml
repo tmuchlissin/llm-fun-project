@@ -24,5 +24,8 @@ dependencies = [
     "pypdf>=6.1.1",
     "pyprojroot>=0.3.0",
     "python-dotenv>=1.1.1",
+    "sentence-transformers>=5.1.2",
+    "unstructured>=0.18.21",
+    "wget>=3.2",
     "wikipedia>=1.4.0",
 ]

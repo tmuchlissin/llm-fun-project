@@ -29,12 +29,10 @@ class PgvectorService:
         query_vector = self.get_vector(query)
 
         with Session(self.engine) as session:
-            # Using cosine similarity for the vector comparison
             cosine_distance = self.EmbeddingStore.embedding.cosine_distance(
                 query_vector
             ).label("distance")
 
-            # Querying the EmbeddingStore table
             results = (
                 session.query(
                     self.EmbeddingStore.document,
@@ -45,7 +43,7 @@ class PgvectorService:
                 .limit(k)
                 .all()
             )
-        # Calculate the similarity score by subtracting the cosine distance from 1 (_cosine_relevance_score_fn)
+
         docs = [(Document(page_content=result[0]), 1 - result[2]) for result in results]
 
         return docs
@@ -74,7 +72,6 @@ class PgvectorService:
                 result = connection.execute(query)
                 collections = [row[0] for row in result]
             except:
-                # If the table doesn't exist, return an empty list
                 collections = []
         return collections
 
@@ -95,7 +92,6 @@ class PgvectorService:
         """
         logging.info(f"Deleting collection: {collection_name}")
         with self.engine.begin() as connection:
-            # 1️⃣ Ambil UUID koleksi dari tabel langchain_pg_collection
             query = text("""
                 SELECT uuid FROM public.langchain_pg_collection WHERE name = :name
             """)
@@ -107,13 +103,11 @@ class PgvectorService:
 
             collection_id = result[0]
 
-        # 2️⃣ Hapus semua embedding yang terkait
         delete_embeddings = text("""
             DELETE FROM public.langchain_pg_embedding WHERE collection_id = :cid
         """)
         connection.execute(delete_embeddings, {"cid": collection_id})
 
-        # 3️⃣ Hapus record koleksi dari langchain_pg_collection
         delete_collection = text("""
             DELETE FROM public.langchain_pg_collection WHERE uuid = :cid
         """)
